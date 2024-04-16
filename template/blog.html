@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title></title>
+    <style>
+        body {font-family: 'Fira Code', 'Fira Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace; line-height: 1.6; margin: 20px;}
+        p { margin: 5px 0; }
+        a { font-weight: bolder; color: #0645AD; text-decoration: none; transition: color 0.3s ease-in-out; }
+        a:hover, a:focus { color: #0B30C9; text-decoration: underline; }
+        .email-content { padding: 20px; border-radius: 8px; }
+    </style>
+</head>
+<body>
+    <div class="email-content">
+        <h2 style="text-align: center;">Blog Updates！</h2>
+        <div style="font-size: 16px;">
+            {{range .Posts}}
+                <hr>
+                <p>
+                    <strong style="color: black;">标题：</strong><a href="{{.Link}}">{{.Title}}</a><br>
+                    <strong style="color: black;">作者：</strong><a href="{{.BlogAddr}}">{{.Author}}</a><br>
+                    <strong style="color: black;">发布时间：</strong>{{.PublishTime.Format "2006-01-02 15:04:05"}}<br>
+                    <strong style="color: black;">内容总结：</strong>
+                    {{.Summary}}
+                </p>
+            {{end}}
+        </div>
+    </div>
+</body>
+</html>
