@@ -2,7 +2,6 @@ package config
 
 import (
 	"os"
-	"strconv"
 )
 
 type NotionConf struct {
@@ -12,8 +11,6 @@ type NotionConf struct {
 }
 
 type AIConf struct {
-	ConcurrentNum int
-	RPM           int // request per minute
 	KimiSecretKey string
 	KimiModel     string
 }
@@ -35,18 +32,7 @@ func InitConfig() {
 		NotionVersion: getEnv("NOTION_VERSION", "2022-06-28"),
 	}
 
-	concurrentNum, _ := strconv.Atoi(getEnv("CONCURRENT_NUM", "1"))
-	if concurrentNum == 0 {
-		concurrentNum = 1
-	}
-	rpm, _ := strconv.Atoi(getEnv("RPM", "3"))
-	if rpm == 0 {
-		rpm = 3
-	}
-
 	AI = AIConf{
-		ConcurrentNum: concurrentNum,
-		RPM:           rpm,
 		KimiSecretKey: getEnv("MOONSHOT_API_KEY", ""),
 		KimiModel:     getEnv("KIMI_MODEL", "moonshot-v1-8k"),
 	}
@@ -54,7 +40,7 @@ func InitConfig() {
 	Email = EmailConf{
 		APIKey: getEnv("RESEND_API_KEY", ""),
 		FROM:   getEnv("RESEND_FROM", "onboarding@resend.dev"),
-		To:     getEnv("RESEND_To", "seed1029zwk@gmail.com"),
+		To:     getEnv("RESEND_To", ""),
 	}
 }
 

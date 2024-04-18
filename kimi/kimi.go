@@ -48,15 +48,16 @@ type Usage struct {
 	TotalTokens      int `json:"total_tokens"`
 }
 
-var BasePrompt = Message{
-	Role: ROLE_SYSTEM,
-	Content: `你是一个擅长对博客和新闻做总结的助手，我将会提供给你博客或者新闻的链接，你需要对此进行总结。
-	总结的时候你需要注意以下几点：
-	1. 不论链接里的内容是什么语言的，总结的结果都必须是中文的。
-	2. 给出总结的内容即可，其余的（例如标题、作者、发布时间等）都不需要给。
-	3. 将总结的内容放在html的div标签中，并且不同的段落需要p标签中。
-	`,
-}
+var blogSummaryPrompt = `你是一个擅长对博客和新闻做总结的助手，我将会提供给你博客或者新闻的链接，你需要对此进行总结。
+总结的时候你需要注意以下几点：
+1. 不论链接里的内容是什么语言的，总结的结果都必须是中文的。
+2. 总结的格式是：
+标题：这里给出中文的标题
+内容总结：
+这里写总结的内容。
+3. 总结的时候要尽可能地详细。`
+
+var BaseBlogSummaryPrompt = Message{Role: ROLE_SYSTEM, Content: blogSummaryPrompt}
 
 func SendChatRequest(prompt string) (result string, err error) {
 	if prompt == "" {
@@ -67,7 +68,7 @@ func SendChatRequest(prompt string) (result string, err error) {
 	requestBody, _ := json.Marshal(APIRequest{
 		Model: config.AI.KimiModel,
 		Messages: []Message{
-			BasePrompt,
+			BaseBlogSummaryPrompt,
 			{Role: ROLE_USER, Content: prompt},
 		},
 		Temperature: 0.3,

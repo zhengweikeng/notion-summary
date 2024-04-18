@@ -6,36 +6,47 @@ import (
 	"focus-ai/config"
 	"focus-ai/kimi"
 	"focus-ai/notification"
+	notionAPI "focus-ai/notion/api"
 	"html/template"
 	"log"
-	"sort"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/avast/retry-go"
-	"github.com/juju/ratelimit"
 	"github.com/mmcdole/gofeed"
 	"github.com/robfig/cron/v3"
 )
 
-// 获取notion database中的所有订阅链接
+const (
+	TEMP_PROP_NAME        = "Name" // 博客名字
+	TEMP_PROP_URL         = "URL"  // RSS链接
+	TEMP_PROP_LASTUPDATED = "Last Updated"
+	TEMP_PROP_CATEGORY    = "Category" // 数据类别，Blog
+)
+
+type Blog struct {
+	ID              string
+	Name            string
+	URL             string
+	Posts           []*BlogPost
+	LastUpdatedTime time.Time
+	HasUpdated      bool
+}
 
 type BlogPost struct {
+	BlogName    string
 	Title       string
+	CNTitle     string
 	Author      string
 	Link        string
-	BlogAddr    string
 	PublishTime time.Time
-	Summary     template.HTML
+	Summary     string
 }
 
 type NoticeTemplate struct {
 	Posts []BlogPost
 }
-
-var bucket *ratelimit.Bucket
-var semaphore chan struct{}
-var once sync.Once
 
 func StartJobs() {
 	c := cron.New(cron.WithSeconds())
@@ -46,25 +57,35 @@ func StartJobs() {
 }
 
 func startBlogUpdateNotificationJob(c *cron.Cron) {
-	c.AddFunc("0 0 6 * * *", func() {
+	c.AddFunc("*/20 * * * *", func() {
 		log.Println("start QueryPosts...")
-		posts, err := QueryPosts()
+		blogs, err := QueryBlogs()
 		if err != nil {
 			log.Printf("QueryPosts error:%v", err)
 			return
 		}
+		if len(blogs) == 0 {
+			log.Println("Not any blogs")
+			return
+		}
 
 		log.Println("start SummarizePosts...")
-		err = SummarizePosts(posts)
+		err = SummarizePosts(blogs)
 		if err != nil {
 			log.Printf("SummarizePosts error:%v", err)
 			return
 		}
 
-		log.Println("start SendBlogsNotification...")
-		err = SendBlogsNotification(posts)
+		log.Println("start SaveBlogSummariesToNotion...")
+		err = SaveBlogSummariesToNotion(blogs)
 		if err != nil {
-			log.Printf("SendBlogsNotification error:%v", err)
+			log.Printf("SaveBlogSummariesToNotion error:%v", err)
+			return
+		}
+
+		err = UpdateBlogUpdateTimeToNotion(blogs)
+		if err != nil {
+			log.Printf("UpdateBlogUpdateTimeToNotion error:%v", err)
 			return
 		}
 	})
@@ -72,87 +93,88 @@ func startBlogUpdateNotificationJob(c *cron.Cron) {
 
 // QueryPosts 查询博客
 // 从notion中的database中查询上一天到当前发布的所有博客
-func QueryPosts() ([]BlogPost, error) {
-	dbItems, err := fetchDatabase(BLOG)
+func QueryBlogs() ([]*Blog, error) {
+	blogs, err := getBlogs()
+	if err != nil {
+		log.Printf("getBlogsFromNotion error:%v", err)
+		return nil, err
+	}
+
+	if len(blogs) == 0 {
+		return nil, nil
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(len(blogs))
+
+	for _, blog := range blogs {
+		go func(b *Blog) {
+			defer wg.Done()
+
+			err := retry.Do(
+				func() error { return fetchPosts(b) },
+				retry.Attempts(5),
+				retry.Delay(2*time.Second),
+				retry.DelayType(retry.BackOffDelay),
+			)
+			if err != nil {
+				log.Printf("fetch blog error, rss:%s, error:%v", b.URL, err)
+				return
+			}
+		}(blog)
+	}
+
+	wg.Wait()
+
+	return blogs, nil
+}
+
+func getBlogs() ([]*Blog, error) {
+	dbItems, err := notionAPI.FetchDatabaseItems(config.Notion.NotionDBID, &notionAPI.DatabaseFilter{
+		Property: TEMP_PROP_CATEGORY,
+		Select:   map[string]interface{}{"equals": "Blog"},
+	})
 	if err != nil {
 		log.Printf("fetch notion data error:%v", err)
 		return nil, err
 	}
 
-	var posts []BlogPost
-	var mu sync.Mutex
-	var wg sync.WaitGroup
-	wg.Add(len(dbItems))
-	previousDay := time.Now().Local().AddDate(0, 0, -1)
-	startOfPreviousDay := time.Date(previousDay.Year(),
-		previousDay.Month(),
-		previousDay.Day(),
-		0, 0, 0, 0,
-		previousDay.Location())
+	var blogs []*Blog
+	for _, item := range dbItems {
+		prop := item.Properties
+		lastUpdatedTime, _ := parseDate(prop[TEMP_PROP_LASTUPDATED].Date.Start)
+		blog := Blog{
+			ID:              item.ID,
+			Name:            prop[TEMP_PROP_NAME].Title[0].PlainText,
+			URL:             prop[TEMP_PROP_URL].URL,
+			LastUpdatedTime: lastUpdatedTime,
+		}
 
-	for _, dbItem := range dbItems {
-		prop := dbItem.Properties
-		go func(rssURL string, isStar bool) {
-			defer wg.Done()
-
-			err := retry.Do(func() error {
-				post, err := getLatestBlogFromRSS(rssURL, startOfPreviousDay)
-				if err != nil {
-					log.Printf("fetch blog error, rss:%s, error:%v", rssURL, err)
-					return err
-				}
-
-				if post.Title == "" {
-					return nil
-				}
-
-				mu.Lock()
-				defer mu.Unlock()
-				posts = append(posts, post)
-				return nil
-			})
-			if err != nil {
-				log.Printf("retry fetch blog error, rss:%s, error:%v", rssURL, err)
-				return
-			}
-
-		}(prop[TEMP_PROP_RSS].URL, prop[TEMP_PROP_IS_STSR].Checkbox)
+		blogs = append(blogs, &blog)
 	}
 
-	wg.Wait()
-
-	sort.Slice(posts, func(i, j int) bool {
-		return posts[i].PublishTime.After(posts[j].PublishTime)
-	})
-
-	return posts, nil
+	return blogs, nil
 }
 
 // SummarizePosts
 // 调用AI总结每篇博客的内容
-func SummarizePosts(posts []BlogPost) error {
-	once.Do(func() {
-		bucket = ratelimit.NewBucket(time.Minute, int64(config.AI.RPM))
-		semaphore = make(chan struct{}, config.AI.ConcurrentNum)
-	})
+func SummarizePosts(blogs []*Blog) error {
+	var posts []*BlogPost
+	for _, b := range blogs {
+		posts = append(posts, b.Posts...)
+	}
+	if len(posts) == 0 {
+		log.Println("Not any posts.")
+		return nil
+	}
 
 	var wg sync.WaitGroup
 	wg.Add(len(posts))
 
 	for i, post := range posts {
-		go func(i int, post BlogPost) {
+		go func(i int, post *BlogPost) {
 			defer wg.Done()
-			semaphore <- struct{}{}
-			defer func() { <-semaphore }()
-
-			bucket.Wait(1)
-			summary, err := summarizePost(post)
-			if err != nil {
-				log.Printf("summarizing post error: %v", err)
-				summary = "Error obtaining summary"
-			}
-
-			posts[i].Summary = template.HTML(summary)
+			summarizePost(post)
 		}(i, post)
 	}
 
@@ -161,24 +183,185 @@ func SummarizePosts(posts []BlogPost) error {
 	return nil
 }
 
-func summarizePost(post BlogPost) (string, error) {
-	var summary string
+func summarizePost(post *BlogPost) error {
 	err := retry.Do(
 		func() error {
-			tempSummary, err := kimi.SendChatRequest(post.Link)
+			plainSummary, err := kimi.SendChatRequest(post.Link)
 			if err != nil {
 				log.Printf("kimi error:%v", err)
 				return err
 			}
 
-			summary = tempSummary
+			cnTitle, summary := parseSummary(plainSummary)
+
+			post.CNTitle = cnTitle
+			post.Summary = summary
 			return nil
 		},
-		retry.Attempts(3),
-		retry.Delay(time.Second),
+		retry.Attempts(5),
+		retry.Delay(2*time.Second),
+		retry.DelayType(retry.BackOffDelay),
 	)
 
-	return summary, err
+	return err
+}
+
+func parseSummary(plainSummary string) (title string, summary string) {
+	// 提取标题
+	titlePrefix := "标题："
+	titleStart := strings.Index(plainSummary, titlePrefix)
+	if titleStart == -1 {
+		summary = plainSummary
+		return
+	}
+	titleStart += len(titlePrefix)
+	titleEnd := strings.Index(plainSummary[titleStart:], "\n")
+	title = plainSummary[titleStart : titleStart+titleEnd]
+
+	// 提取内容总结
+	summaryPrefix := "内容总结："
+	summaryStart := strings.Index(plainSummary, summaryPrefix)
+	if summaryStart == -1 {
+		summary = plainSummary
+		return
+	}
+	summaryStart += len(summaryPrefix)
+	summaryEnd := strings.Index(plainSummary[summaryStart:], "\n\n") // 假设内容总结后有两个换行表示段落结束
+	if summaryEnd == -1 {
+		summaryEnd = len(plainSummary) - summaryStart
+	}
+	summary = plainSummary[summaryStart : summaryStart+summaryEnd]
+
+	return
+}
+
+// SaveBlogSummariesToNotion 将包含总结的博客信息写入notion中
+func SaveBlogSummariesToNotion(blogs []*Blog) error {
+	var wg sync.WaitGroup
+	wg.Add(len(blogs))
+
+	for _, blog := range blogs {
+		go func(b *Blog) {
+			defer wg.Done()
+
+			if len(b.Posts) == 0 {
+				return
+			}
+
+			var blocks []notionAPI.Block
+			blocks, err := notionAPI.FetchBlockChilds(b.ID)
+			if err != nil {
+				log.Printf("FetchBlockChilds error, ID:%s, Name:%s, err:%v", b.ID, b.Name, err)
+				return
+			}
+			if len(blocks) == 0 {
+				return
+			}
+
+			database := blocks[0]
+			if database.Type != "child_database" {
+				return
+			}
+
+			for _, post := range b.Posts {
+				pageProps := map[string]notionAPI.Property{
+					"Name": notionAPI.Property{
+						Title: []notionAPI.TitleProperty{
+							{Text: notionAPI.TextField{Content: post.Title}},
+						},
+					},
+					"CN Name": notionAPI.Property{
+						RichText: []notionAPI.RichTextProperty{
+							{Text: notionAPI.TextField{Content: post.CNTitle}},
+						},
+					},
+					"Published": notionAPI.Property{
+						Date: &notionAPI.DateProperty{
+							Start: post.PublishTime.Format("2006-01-02 15:04:05"),
+						},
+					},
+				}
+
+				children := []notionAPI.Block{
+					{
+						Object:   "block",
+						Type:     "bookmark",
+						Bookmark: &notionAPI.BlockBookmark{URL: post.Link},
+					},
+				}
+				if post.CNTitle != "" {
+					children = append(children, notionAPI.Block{
+						Object: "block",
+						Type:   "heading_2",
+						Heading2: &notionAPI.BlockHeading2{
+							RichText: []notionAPI.RichTextProperty{
+								{Text: notionAPI.TextField{Content: post.CNTitle}},
+							},
+						},
+					})
+				}
+				children = append(children, notionAPI.Block{
+					Object: "block",
+					Type:   "paragraph",
+					Paragraph: &notionAPI.BlockParagraph{
+						RichText: []notionAPI.RichTextProperty{
+							{Text: notionAPI.TextField{Content: post.Summary}},
+						},
+					},
+				})
+
+				_, err = notionAPI.CreatePageInDatabase(database.ID, pageProps, children)
+				if err != nil {
+					log.Printf("CreatePageInDatabase error, Name:%s, err:%v", post.Title, err)
+					break
+				}
+
+				b.LastUpdatedTime = post.PublishTime
+				b.HasUpdated = true
+			}
+		}(blog)
+	}
+
+	wg.Wait()
+
+	return nil
+}
+
+func UpdateBlogUpdateTimeToNotion(blogs []*Blog) error {
+	var needUpdateBlogs []*Blog
+	for _, b := range blogs {
+		if !b.HasUpdated {
+			continue
+		}
+		needUpdateBlogs = append(needUpdateBlogs, b)
+	}
+	if len(needUpdateBlogs) == 0 {
+		log.Println("Not any blogs need to update")
+		return nil
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(len(needUpdateBlogs))
+	for _, blog := range needUpdateBlogs {
+		go func(b *Blog) {
+			defer wg.Done()
+
+			lastUpdatedTime := b.LastUpdatedTime.Format("2006-01-02 15:04:05")
+			pageProps := map[string]notionAPI.Property{
+				"Last Updated": notionAPI.Property{
+					Date: &notionAPI.DateProperty{Start: lastUpdatedTime},
+				},
+			}
+
+			err := notionAPI.UpdatePage(b.ID, pageProps)
+			if err != nil {
+				log.Printf("UpdatePage error, Name:%s, err:%v", b.Name, err)
+				return
+			}
+		}(blog)
+	}
+
+	return nil
 }
 
 // SendBlogsNotification
@@ -207,36 +390,34 @@ func SendBlogsNotification(posts []BlogPost) error {
 	)
 }
 
-func getLatestBlogFromRSS(url string, startTime time.Time) (blog BlogPost, err error) {
+func fetchPosts(b *Blog) (err error) {
 	fp := gofeed.NewParser()
-	feed, err := fp.ParseURL(url)
+	feed, err := fp.ParseURL(b.URL)
 	if err != nil {
 		return
 	}
-
 	if feed == nil {
 		return
 	}
 
-	blogAddr := feed.Link
-
+	var posts []*BlogPost
 	for _, item := range feed.Items {
+		if len(posts) >= 3 {
+			break
+		}
+
 		if item == nil {
 			continue
 		}
 
-		blog := BlogPost{
+		post := BlogPost{
+			BlogName: b.Name,
 			Title:    item.Title,
 			Link:     item.Link,
-			BlogAddr: blogAddr,
 		}
 
 		if item.Author != nil {
-			blog.Author = item.Author.Name
-		}
-
-		if item.Published == "" {
-			continue
+			post.Author = item.Author.Name
 		}
 
 		publishTime, err := parseDate(item.Published)
@@ -244,14 +425,15 @@ func getLatestBlogFromRSS(url string, startTime time.Time) (blog BlogPost, err e
 			log.Printf("parse publish time error:%v", err)
 			continue
 		}
-		if publishTime.Before(startTime) {
+		post.PublishTime = publishTime
+
+		if publishTime.After(b.LastUpdatedTime) {
+			posts = append(posts, &post)
 			continue
 		}
-
-		blog.PublishTime = publishTime
-
-		return blog, nil
 	}
+
+	b.Posts = posts
 
 	return
 }
