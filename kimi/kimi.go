@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"focus-ai/config"
 	"io"
 	"net/http"
+	"summary-notion/config"
 )
 
 const ROLE_SYSTEM = "system"
@@ -48,14 +48,13 @@ type Usage struct {
 	TotalTokens      int `json:"total_tokens"`
 }
 
-var blogSummaryPrompt = `你是一个擅长对博客和新闻做总结的助手，我将会提供给你博客或者新闻的链接，你需要对此进行总结。
+var blogSummaryPrompt = `你是一个擅长做总结的助手，我将会提供给你网站的链接，你需要对网站里的内容进行总结。
 总结的时候你需要注意以下几点：
 1. 不论链接里的内容是什么语言的，总结的结果都必须是中文的。
 2. 总结的格式是：
 标题：这里给出中文的标题
 内容总结：
-这里写总结的内容。
-3. 总结的时候要尽可能地详细。`
+这里写总结的内容。`
 
 var BaseBlogSummaryPrompt = Message{Role: ROLE_SYSTEM, Content: blogSummaryPrompt}
 

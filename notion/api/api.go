@@ -4,10 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"focus-ai/config"
 	"io"
 	"log"
 	"net/http"
+	"summary-notion/config"
 	"time"
 
 	"github.com/avast/retry-go"

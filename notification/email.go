@@ -1,7 +1,7 @@
 package notification
 
 import (
-	"focus-ai/config"
+	"summary-notion/config"
 
 	"github.com/resend/resend-go/v2"
 )

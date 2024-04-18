@@ -3,13 +3,13 @@ package notion
 import (
 	"bytes"
 	"fmt"
-	"focus-ai/config"
-	"focus-ai/kimi"
-	"focus-ai/notification"
-	notionAPI "focus-ai/notion/api"
 	"html/template"
 	"log"
 	"strings"
+	"summary-notion/config"
+	"summary-notion/kimi"
+	"summary-notion/notification"
+	notionAPI "summary-notion/notion/api"
 	"sync"
 	"time"
 
@@ -51,13 +51,13 @@ type NoticeTemplate struct {
 func StartJobs() {
 	c := cron.New(cron.WithSeconds())
 
-	startBlogUpdateNotificationJob(c)
+	startSummaryBlogJob(c)
 
 	c.Start()
 }
 
-func startBlogUpdateNotificationJob(c *cron.Cron) {
-	c.AddFunc("*/20 * * * *", func() {
+func startSummaryBlogJob(c *cron.Cron) {
+	var summaryJob = func() {
 		log.Println("start QueryPosts...")
 		blogs, err := QueryBlogs()
 		if err != nil {
@@ -88,7 +88,10 @@ func startBlogUpdateNotificationJob(c *cron.Cron) {
 			log.Printf("UpdateBlogUpdateTimeToNotion error:%v", err)
 			return
 		}
-	})
+	}
+	summaryJob()
+
+	c.AddFunc(config.Service.BlogSyncInterval, summaryJob)
 }
 
 // QueryPosts 查询博客
@@ -142,7 +145,10 @@ func getBlogs() ([]*Blog, error) {
 	var blogs []*Blog
 	for _, item := range dbItems {
 		prop := item.Properties
-		lastUpdatedTime, _ := parseDate(prop[TEMP_PROP_LASTUPDATED].Date.Start)
+		var lastUpdatedTime time.Time
+		if prop[TEMP_PROP_LASTUPDATED].Date != nil {
+			lastUpdatedTime, _ = parseDate(prop[TEMP_PROP_LASTUPDATED].Date.Start)
+		}
 		blog := Blog{
 			ID:              item.ID,
 			Name:            prop[TEMP_PROP_NAME].Title[0].PlainText,
@@ -263,19 +269,19 @@ func SaveBlogSummariesToNotion(blogs []*Blog) error {
 				return
 			}
 
-			for _, post := range b.Posts {
+			for i, post := range b.Posts {
 				pageProps := map[string]notionAPI.Property{
-					"Name": notionAPI.Property{
+					"Name": {
 						Title: []notionAPI.TitleProperty{
 							{Text: notionAPI.TextField{Content: post.Title}},
 						},
 					},
-					"CN Name": notionAPI.Property{
+					"CN Name": {
 						RichText: []notionAPI.RichTextProperty{
 							{Text: notionAPI.TextField{Content: post.CNTitle}},
 						},
 					},
-					"Published": notionAPI.Property{
+					"Published": {
 						Date: &notionAPI.DateProperty{
 							Start: post.PublishTime.Format("2006-01-02 15:04:05"),
 						},
@@ -316,8 +322,10 @@ func SaveBlogSummariesToNotion(blogs []*Blog) error {
 					break
 				}
 
-				b.LastUpdatedTime = post.PublishTime
-				b.HasUpdated = true
+				if i == 0 {
+					b.LastUpdatedTime = post.PublishTime
+					b.HasUpdated = true
+				}
 			}
 		}(blog)
 	}
@@ -402,7 +410,7 @@ func fetchPosts(b *Blog) (err error) {
 
 	var posts []*BlogPost
 	for _, item := range feed.Items {
-		if len(posts) >= 3 {
+		if config.Notion.SyncMaxSize > 0 && len(posts) >= config.Notion.SyncMaxSize {
 			break
 		}
 
@@ -410,11 +418,7 @@ func fetchPosts(b *Blog) (err error) {
 			continue
 		}
 
-		post := BlogPost{
-			BlogName: b.Name,
-			Title:    item.Title,
-			Link:     item.Link,
-		}
+		post := BlogPost{BlogName: b.Name, Title: item.Title, Link: item.Link}
 
 		if item.Author != nil {
 			post.Author = item.Author.Name

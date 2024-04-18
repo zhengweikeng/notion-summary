@@ -1,16 +1,18 @@
 package main
 
 import (
-	"focus-ai/config"
-	"focus-ai/notion"
 	"log"
+	"net/http"
+	"summary-notion/config"
+	"summary-notion/notion"
 )
 
 func main() {
 	log.Println("Start init config")
 	config.InitConfig()
-	notion.StartJobs()
 
+	notion.StartJobs()
 	log.Println("Start Jobs")
-	select {}
+
+	http.ListenAndServe(":"+config.Service.Port, nil)
 }
