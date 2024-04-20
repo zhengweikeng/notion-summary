@@ -36,5 +36,9 @@ func DoSummaryJob(c *cron.Cron) {
 	}
 	summaryJob()
 
-	c.AddFunc(config.Service.BlogSyncInterval, summaryJob)
+	_, err := c.AddFunc(config.Service.BlogSyncInterval, summaryJob)
+	if err != nil {
+		log.Printf("err:%v", err)
+		return
+	}
 }

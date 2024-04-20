@@ -11,10 +11,9 @@ type ServiceConf struct {
 }
 
 type NotionConf struct {
-	NotionApiKey  string
-	NotionDBID    string
-	NotionVersion string
-	SyncMaxSize   int
+	NotionApiKey string
+	NotionDBID   string
+	SyncMaxSize  int
 }
 
 type AIConf struct {
@@ -36,7 +35,7 @@ var Email EmailConf
 func InitConfig() {
 	Service = ServiceConf{
 		Port:             getEnv("PORT", "8080"),
-		BlogSyncInterval: getEnv("BLOG_SYNC_INTERVAL", "@every 30m"),
+		BlogSyncInterval: getEnv("SUBSCRIPTION_SYNC_INTERVAL", "@every 1m"),
 	}
 
 	syncMaxSize, _ := strconv.Atoi(getEnv("SYNC_MAX_SIZE", ""))
@@ -44,10 +43,9 @@ func InitConfig() {
 		syncMaxSize = 3
 	}
 	Notion = NotionConf{
-		NotionApiKey:  getEnv("NOTION_API_KEY", ""),
-		NotionDBID:    getEnv("NOTION_DATABASE_ID", ""),
-		NotionVersion: getEnv("NOTION_VERSION", "2022-06-28"),
-		SyncMaxSize:   syncMaxSize,
+		NotionApiKey: getEnv("NOTION_API_KEY", ""),
+		NotionDBID:   getEnv("NOTION_DATABASE_ID", ""),
+		SyncMaxSize:  syncMaxSize,
 	}
 
 	AI = AIConf{

@@ -15,7 +15,7 @@
 - **AI摘要**：利用Kimi AI技术生成文章总结。
 - **集成Notion**：直接在Notion页面上展示总结。
 
-## 安装与配置
+## 配置与启动
 前置准备：
 1. **拷贝Notion模板**：
     - 将这个Notion[模板](https://lydian-jelly-d27.notion.site/fda4e6cc21404aac89a509ed2a3e7e19?v=7bb79e84017146879a9e58acb2620525)复制到你的notion中
@@ -42,3 +42,16 @@
 1. **clone项目**：将项目clone到你的机器上
 2. **安装依赖**：运行go mod download
 3. **运行**：go run main.go
+
+## 全部环境变量
+| 环境变量名 | 含义 | 是否必填 | 默认值 |
+|-------|-------|-------|----------------|
+| PORT |  服务启动端口 | 否 | 8080 |
+| SUBSCRIPTION_SYNC_INTERVAL |  定时拉取的间隔，配置参考[cron](https://github.com/robfig/cron) | 否 | @every 30m |
+| SYNC_MAX_SIZE |  每次从RSS订阅源获取的文章最大数量 | 否 | 3 |
+| NOTION_API_KEY |  notion的Integration api key | 是 | - |
+| NOTION_DATABASE_ID |  notion模板的database id | 是 | - |
+| MOONSHOT_API_KEY |  kimi的secret key | 是 | - |
+| KIMI_MODEL |  kimi的采用的模型 | 否 | moonshot-v1-8k |
+
+

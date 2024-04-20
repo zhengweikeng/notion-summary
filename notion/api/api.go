@@ -28,7 +28,7 @@ func makeRequest(method string, url string, reqParams, respStruct interface{}) (
 		}
 
 		req.Header.Add("Authorization", "Bearer "+config.Notion.NotionApiKey)
-		req.Header.Add("Notion-Version", config.Notion.NotionVersion)
+		req.Header.Add("Notion-Version", "2022-06-28")
 		req.Header.Add("Content-Type", "application/json")
 
 		client := &http.Client{}
