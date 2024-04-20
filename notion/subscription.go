@@ -3,10 +3,10 @@ package notion
 import (
 	"fmt"
 	"log"
+	"notion-summary/config"
+	"notion-summary/kimi"
+	notionAPI "notion-summary/notion/api"
 	"strings"
-	"summary-notion/config"
-	"summary-notion/kimi"
-	notionAPI "summary-notion/notion/api"
 	"sync"
 	"time"
 

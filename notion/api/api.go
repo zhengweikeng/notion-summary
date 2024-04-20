@@ -7,7 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"summary-notion/config"
+	"notion-summary/config"
 	"time"
 
 	"github.com/avast/retry-go"

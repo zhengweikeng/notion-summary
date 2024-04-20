@@ -1,7 +1,7 @@
 package notification
 
 import (
-	"summary-notion/config"
+	"notion-summary/config"
 
 	"github.com/resend/resend-go/v2"
 )

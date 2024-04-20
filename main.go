@@ -3,8 +3,8 @@ package main
 import (
 	"log"
 	"net/http"
-	"summary-notion/config"
-	"summary-notion/notion"
+	"notion-summary/config"
+	"notion-summary/notion"
 )
 
 func main() {

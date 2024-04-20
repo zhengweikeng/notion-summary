@@ -2,7 +2,7 @@ package notion
 
 import (
 	"log"
-	"summary-notion/config"
+	"notion-summary/config"
 
 	"github.com/robfig/cron/v3"
 )

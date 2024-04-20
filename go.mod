@@ -1,4 +1,4 @@
-module summary-notion
+module notion-summary
 
 go 1.22.1
 

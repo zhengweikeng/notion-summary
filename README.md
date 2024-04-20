@@ -1,0 +1,44 @@
+# Notion Summary
+这是一个使用Kimi AI定时总结Notion中RSS订阅链接文章的Notion Integration工具。
+
+## 简介
+通过这个集成，用户可以轻松地在Notion页面上获取和总结他们关注的RSS订阅源中的文章，总结后的结果将会写入到对应Notion页面中，你可以通过总结判断是否去阅读原文。
+
+![alt text](images/subscriptions.png)
+
+![alt text](images/subscription_detail.png)
+
+![alt text](images/summary_post.png)
+
+## 功能
+- **定时更新**：根据设定的时间间隔（默认是1小时）自动更新订阅源。
+- **AI摘要**：利用Kimi AI技术生成文章总结。
+- **集成Notion**：直接在Notion页面上展示总结。
+
+## 安装与配置
+前置准备：
+1. **拷贝Notion模板**：
+    - 将这个Notion[模板](https://lydian-jelly-d27.notion.site/fda4e6cc21404aac89a509ed2a3e7e19?v=7bb79e84017146879a9e58acb2620525)复制到你的notion中
+    - 获取模板的id，进入你的notion，到刚才复制的模板中，点击右上角的“...”，点击“Copy link”，到浏览器打开，便可以得到这个模板的id
+2. **创建与安装notion Integration**：
+   - 到Notion的Integration管理页面，创建一个[Integration](https://www.notion.so/my-integrations)，创建后notion会为你分配一个Secret Key。
+   - 进入你的notion，到刚才复制的模板中，点击右上角的“...”，在**Connect to**那里添加刚才你创建的Integration。
+3. **创建Kimi API Key**：
+   - 登录Kimi AI的[开放平台](https://platform.moonshot.cn/)，创建API key。
+
+环境变量配置：
+1. 打开你的shell profile，如果你和我一样使用的是zsh，那就是`~/.zshrc`
+2. 配置以下环境变量:
+   ```
+   export NOTION_API_KEY=${填入你的notion Ingetration secret key}
+   export NOTION_DATABASE_ID=${填入模板的id}
+   export MOONSHOT_API_KEY=${填入你的kimi api key}
+   ```
+
+配置RSS订阅源
+1. 到模板中添加你关注的RSS订阅源
+
+项目运行：
+1. **clone项目**：将项目clone到你的机器上
+2. **安装依赖**：运行go mod download
+3. **运行**：go run main.go

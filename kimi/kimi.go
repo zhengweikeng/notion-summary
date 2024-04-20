@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"summary-notion/config"
+	"notion-summary/config"
 )
 
 const ROLE_SYSTEM = "system"
