@@ -35,7 +35,7 @@ var Email EmailConf
 func InitConfig() {
 	Service = ServiceConf{
 		Port:             getEnv("PORT", "8080"),
-		BlogSyncInterval: getEnv("SUBSCRIPTION_SYNC_INTERVAL", "@every 1m"),
+		BlogSyncInterval: getEnv("SUBSCRIPTION_SYNC_INTERVAL", "@every 30m"),
 	}
 
 	syncMaxSize, _ := strconv.Atoi(getEnv("SYNC_MAX_SIZE", ""))
