@@ -13,6 +13,7 @@ type DatabaseFilter struct {
 	Property string            `json:"property,omitempty"`
 	Select   map[string]string `json:"select,omitempty"`
 	Checkbox map[string]bool   `json:"checkbox,omitempty"`
+	URL      map[string]string `json:"url,omitempty"`
 }
 
 type DatabaseResponse struct {

@@ -14,24 +14,16 @@ import (
 	"github.com/mmcdole/gofeed"
 )
 
-const (
-	TEMP_PROP_NAME        = "Name"         // 名字
-	TEMP_PROP_URL         = "URL"          // RSS链接
-	TEMP_PROP_LASTUPDATED = "Last Updated" // 最新一篇文章的发布时间
-	TEMP_PROP_CATEGORY    = "Category"     // 数据类别
-	TEMP_PROP_ENABLED     = "Enabled"      // 是否启用
-)
-
 type Subscription struct {
-	ID              string
-	Name            string
-	URL             string
-	Posts           []*Post
-	LastUpdatedTime time.Time
-	HasUpdated      bool
+	ID       string
+	PostDbID string
+	Name     string
+	URL      string
+	Posts    []*Post
 }
 
 type Post struct {
+	ID          string
 	Title       string
 	CNTitle     string
 	Authors     string
@@ -81,8 +73,6 @@ func UpdateSubscriptionsInfos(subscriptions []*Subscription) error {
 
 	wg.Wait()
 
-	syncLastUpdatedTime(subscriptions)
-
 	return nil
 }
 
@@ -90,11 +80,11 @@ func querySubscriptionsInNotion() ([]*Subscription, error) {
 	dbItems, err := notionAPI.FetchDatabaseItems(config.Notion.NotionDBID,
 		[]notionAPI.DatabaseFilter{
 			{
-				Property: TEMP_PROP_CATEGORY,
+				Property: "Category",
 				Select:   map[string]string{"equals": "RSS"},
 			},
 			{
-				Property: TEMP_PROP_ENABLED,
+				Property: "Enabled",
 				Checkbox: map[string]bool{"equals": true},
 			},
 		}, notionAPI.AND)
@@ -111,19 +101,30 @@ func querySubscriptionsInNotion() ([]*Subscription, error) {
 	log.Println("Your subscription list:")
 	for i, item := range dbItems {
 		prop := item.Properties
-		var lastUpdatedTime time.Time
-		if prop[TEMP_PROP_LASTUPDATED].Date != nil {
-			lastUpdatedTime, _ = parseDate(prop[TEMP_PROP_LASTUPDATED].Date.Start)
-		}
-		subscription := Subscription{
-			ID:              item.ID,
-			Name:            prop[TEMP_PROP_NAME].Title[0].PlainText,
-			URL:             prop[TEMP_PROP_URL].URL,
-			LastUpdatedTime: lastUpdatedTime,
+		s := Subscription{
+			ID:   item.ID,
+			Name: prop["Name"].Title[0].PlainText,
+			URL:  prop["URL"].URL,
 		}
 
-		log.Printf("%d. %s: %s\n", i+1, subscription.Name, subscription.URL)
-		subscriptions = append(subscriptions, &subscription)
+		blocks, err := notionAPI.FetchBlockChilds(item.ID)
+		if err != nil {
+			log.Printf("FetchBlockChilds error, ID:%s, Name:%s, err:%v\n", s.ID, s.Name, err)
+			continue
+		}
+		if len(blocks) == 0 {
+			continue
+		}
+
+		database := blocks[0]
+		if database.Type != "child_database" {
+			continue
+		}
+
+		s.PostDbID = database.ID
+
+		log.Printf("%d. %s: %s\n", i+1, s.Name, s.URL)
+		subscriptions = append(subscriptions, &s)
 	}
 
 	return subscriptions, nil
@@ -136,7 +137,41 @@ func fetchPosts(subscriptions []*Subscription) error {
 	for _, subscription := range subscriptions {
 		go func(s *Subscription) {
 			defer wg.Done()
+
 			s.fetchRSSPosts()
+			filters := make([]notionAPI.DatabaseFilter, len(s.Posts))
+			for i, post := range s.Posts {
+				filters[i] = notionAPI.DatabaseFilter{
+					Property: "Link",
+					URL:      map[string]string{"equals": post.Link},
+				}
+			}
+			existPosts, err := notionAPI.FetchDatabaseItems(s.PostDbID, filters, notionAPI.OR)
+			if err != nil {
+				log.Printf("query exist posts error:%v", err)
+				s.Posts = nil
+				return
+			}
+
+			if len(existPosts) == 0 {
+				return
+			}
+
+			existPostsMap := map[string]struct{}{}
+			for _, p := range existPosts {
+				link := p.Properties["Link"].URL
+				existPostsMap[link] = struct{}{}
+			}
+
+			var newPosts []*Post
+			for _, p := range s.Posts {
+				if _, exist := existPostsMap[p.Link]; exist {
+					continue
+				}
+				newPosts = append(newPosts, p)
+			}
+
+			s.Posts = newPosts
 		}(subscription)
 	}
 
@@ -166,7 +201,7 @@ func (s *Subscription) fetchRSSPosts() {
 					continue
 				}
 
-				post := Post{Title: item.Title, Link: item.Link}
+				post := Post{ID: item.GUID, Title: item.Title, Link: item.Link}
 
 				var authors []*gofeed.Person
 				if len(item.Authors) > 0 {
@@ -185,16 +220,11 @@ func (s *Subscription) fetchRSSPosts() {
 
 				publishTime, err := parseDate(item.Published)
 				if err != nil {
-					log.Printf("parse publish time error:%v\n", err)
-					continue
+					log.Printf("publish time %s parse error:%v\n", item.Published, err)
 				}
 				post.PublishTime = publishTime
 
-				if publishTime.After(s.LastUpdatedTime) {
-					log.Printf("publishTime:%v lastUpdateTime:%v", publishTime, s.LastUpdatedTime)
-					posts = append(posts, &post)
-					continue
-				}
+				posts = append(posts, &post)
 			}
 
 			s.Posts = posts
@@ -244,35 +274,17 @@ func makeSummarize(subscriptions []*Subscription) error {
 
 func (s *Subscription) savePostSummaryToNotion() error {
 	if len(s.Posts) == 0 {
+		log.Printf("[%s] not any new posts", s.Name)
 		return nil
 	}
 
-	var blocks []notionAPI.Block
-	blocks, err := notionAPI.FetchBlockChilds(s.ID)
-	if err != nil {
-		log.Printf("FetchBlockChilds error, ID:%s, Name:%s, err:%v\n", s.ID, s.Name, err)
-		return err
-	}
-	if len(blocks) == 0 {
-		return nil
-	}
-
-	database := blocks[0]
-	if database.Type != "child_database" {
-		return nil
-	}
-
-	for i, post := range s.Posts {
-		log.Printf("[%s] save summary to notion, title:%s\n", database.ID, post.Title)
-		err := post.saveSummaryToNotion(database.ID)
+	for _, post := range s.Posts {
+		databaseID := s.PostDbID
+		log.Printf("[%s] save summary to notion, title:%s\n", databaseID, post.Title)
+		err := post.saveSummaryToNotion(databaseID)
 		if err != nil {
 			log.Printf("saveSummaryToNotion error, Name:%s, err:%v\n", post.Title, err)
 			break
-		}
-
-		if i == 0 {
-			s.LastUpdatedTime = post.PublishTime
-			s.HasUpdated = true
 		}
 	}
 	return nil
@@ -311,7 +323,7 @@ func (post *Post) saveSummaryToNotion(databaseID string) error {
 				{Text: notionAPI.TextField{Content: post.Authors}},
 			},
 		},
-		"CN Name": {
+		"CN Title": {
 			RichText: []notionAPI.RichTextProperty{
 				{Text: notionAPI.TextField{Content: post.CNTitle}},
 			},
@@ -321,6 +333,7 @@ func (post *Post) saveSummaryToNotion(databaseID string) error {
 				Start: post.PublishTime.Format("2006-01-02 15:04:05"),
 			},
 		},
+		"Link": {URL: post.Link},
 	}
 
 	children := []notionAPI.Block{
@@ -414,40 +427,4 @@ func parseDate(dateStr string) (time.Time, error) {
 	}
 
 	return time.Time{}, fmt.Errorf("unable to parse date: %s", dateStr)
-}
-
-func syncLastUpdatedTime(subscriptions []*Subscription) {
-	var needUpdates []*Subscription
-	for _, s := range subscriptions {
-		if !s.HasUpdated {
-			continue
-		}
-		needUpdates = append(needUpdates, s)
-	}
-	if len(needUpdates) == 0 {
-		log.Println("Not any blogs need to update")
-		return
-	}
-
-	var wg sync.WaitGroup
-	wg.Add(len(needUpdates))
-	for _, subscription := range needUpdates {
-		log.Printf("[%s] sync lastUpdatedTime:%v\n", subscription.Name, subscription.LastUpdatedTime)
-		go func(s *Subscription) {
-			defer wg.Done()
-
-			lastUpdatedTime := s.LastUpdatedTime.Format("2006-01-02 15:04:05")
-			pageProps := map[string]notionAPI.Property{
-				"Last Updated": {
-					Date: &notionAPI.DateProperty{Start: lastUpdatedTime},
-				},
-			}
-
-			err := notionAPI.UpdatePage(s.ID, pageProps)
-			if err != nil {
-				log.Printf("UpdatePage error, Name:%s, err:%v\n", s.Name, err)
-				return
-			}
-		}(subscription)
-	}
 }
