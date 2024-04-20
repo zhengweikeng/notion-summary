@@ -6,12 +6,13 @@ import (
 )
 
 type DatabaseRequestBody struct {
-	Filter DatabaseFilter `json:"filter,omitempty"`
+	Filter map[string][]DatabaseFilter `json:"filter,omitempty"`
 }
 
 type DatabaseFilter struct {
-	Property string                 `json:"property,omitempty"`
-	Select   map[string]interface{} `json:"select,omitempty"`
+	Property string            `json:"property,omitempty"`
+	Select   map[string]string `json:"select,omitempty"`
+	Checkbox map[string]bool   `json:"checkbox,omitempty"`
 }
 
 type DatabaseResponse struct {
@@ -93,9 +94,22 @@ type Parent struct {
 	DatabaseID string `json:"database_id,omitempty"`
 }
 
-func FetchDatabaseItems(databaseID string, filter *DatabaseFilter) (dbItems []DatabaseItem, err error) {
+type FilterCompoundType string
+
+const (
+	AND FilterCompoundType = "and"
+	OR  FilterCompoundType = "or"
+)
+
+func FetchDatabaseItems(databaseID string,
+	filters []DatabaseFilter,
+	compoundDesc FilterCompoundType) (dbItems []DatabaseItem, err error) {
 	url := fmt.Sprintf("https://api.notion.com/v1/databases/%s/query", databaseID)
-	reqBody := DatabaseRequestBody{Filter: *filter}
+	reqBody := DatabaseRequestBody{
+		Filter: map[string][]DatabaseFilter{
+			string(compoundDesc): filters,
+		},
+	}
 	database := &DatabaseResponse{}
 
 	err = makeRequest(http.MethodPost, url, reqBody, database)

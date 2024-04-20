@@ -8,11 +8,11 @@ import (
 )
 
 func main() {
-	log.Println("Start init config")
+	log.Println("Initialize config")
 	config.InitConfig()
 
-	notion.StartJobs()
-	log.Println("Start Jobs")
+	log.Println("Initialize cron jobs")
+	notion.InitCronJobs()
 
 	http.ListenAndServe(":"+config.Service.Port, nil)
 }
