@@ -47,11 +47,11 @@
 | 环境变量名 | 含义 | 是否必填 | 默认值 |
 |-------|-------|-------|----------------|
 | PORT |  服务启动端口 | 否 | 8080 |
-| SUBSCRIPTION_SYNC_INTERVAL |  定时拉取的间隔，配置参考[cron](https://github.com/robfig/cron) | 否 | @every 30m |
+| SUBSCRIPTION_SYNC_INTERVAL |  定时拉取的间隔，配置参考[cron](https://github.com/robfig/cron) | 否 | @every 1h |
 | SYNC_MAX_SIZE |  每次从RSS订阅源获取的文章最大数量 | 否 | 3 |
 | NOTION_API_KEY |  notion的Integration api key | 是 | - |
 | NOTION_DATABASE_ID |  notion模板的database id | 是 | - |
 | MOONSHOT_API_KEY |  kimi的secret key | 是 | - |
-| KIMI_MODEL |  kimi的采用的模型 | 否 | moonshot-v1-8k |
+| KIMI_MODEL |  kimi的采用的模型 | 否 | moonshot-v1-32k |
 
 

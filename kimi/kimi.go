@@ -48,13 +48,14 @@ type Usage struct {
 	TotalTokens      int `json:"total_tokens"`
 }
 
-var blogSummaryPrompt = `你是一个擅长做总结的助手，我将会提供给你网站的链接，你需要对网站里的内容进行总结。
-总结的时候你需要注意以下几点：
-1. 不论链接里的内容是什么语言的，总结的结果都必须是中文的。
-2. 总结的格式是：
-标题：这里给出中文的标题
+var blogSummaryPrompt = `你是一个做文章摘要总结的助手，你需要根据用户的需求进行内容的摘要和总结。
+你需要注意以下几点：
+1. 如果用户给到的是一个网站的链接，你需要先提取链接里的内容。
+2. 摘要总结的结果的格式是这样的：
+标题：这里给出内容的中文标题
 内容总结：
-这里写总结的内容。`
+这里写摘要总结的内容。
+3. 给出的结果都必须是中文的。`
 
 var BaseBlogSummaryPrompt = Message{Role: ROLE_SYSTEM, Content: blogSummaryPrompt}
 

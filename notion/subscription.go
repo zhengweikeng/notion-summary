@@ -29,6 +29,7 @@ type Post struct {
 	Authors     string
 	Link        string
 	PublishTime time.Time
+	Content     string
 	Summary     string
 }
 
@@ -50,10 +51,7 @@ func QuerySubscriptions() ([]*Subscription, error) {
 		return nil, err
 	}
 
-	err = makeSummarize(subscriptions)
-	if err != nil {
-		return nil, err
-	}
+	makeSummarize(subscriptions)
 
 	return subscriptions, nil
 }
@@ -201,7 +199,11 @@ func (s *Subscription) fetchRSSPosts() {
 					continue
 				}
 
-				post := Post{ID: item.GUID, Title: item.Title, Link: item.Link}
+				content := item.Content
+				if content == "" {
+					content = item.Description
+				}
+				post := Post{ID: item.GUID, Title: item.Title, Link: item.Link, Content: content}
 
 				var authors []*gofeed.Person
 				if len(item.Authors) > 0 {
@@ -240,36 +242,27 @@ func (s *Subscription) fetchRSSPosts() {
 	}
 }
 
-func makeSummarize(subscriptions []*Subscription) error {
+func makeSummarize(subscriptions []*Subscription) {
 	var posts []*Post
 	for _, s := range subscriptions {
 		posts = append(posts, s.Posts...)
 	}
 	if len(posts) == 0 {
 		log.Println("Not any posts.")
-		return nil
+		return
 	}
-
-	var wg sync.WaitGroup
-	wg.Add(len(posts))
 
 	log.Println("Begin to summarize posts...")
 	for _, post := range posts {
 		log.Printf("summarize post, %s: \"%s\" \n", post.Authors, post.Title)
-
-		go func(post *Post) {
-			defer wg.Done()
-			err := post.summarize()
-			if err != nil {
-				log.Printf("summarize post %s error:%v\n", post.Title, err)
-				return
-			}
-		}(post)
+		err := post.summarize()
+		if err != nil {
+			log.Printf("summarize post %s error:%v\n", post.Title, err)
+			continue
+		}
 	}
 
-	wg.Wait()
-
-	return nil
+	return
 }
 
 func (s *Subscription) savePostSummaryToNotion() error {
@@ -293,14 +286,18 @@ func (s *Subscription) savePostSummaryToNotion() error {
 func (post *Post) summarize() error {
 	return retry.Do(
 		func() error {
-			plainSummary, err := kimi.SendChatRequest(post.Link)
+			prompt := post.Link
+			if post.Content != "" {
+				prompt = post.Content
+			}
+
+			plainSummary, err := kimi.SendChatRequest(prompt)
 			if err != nil {
 				log.Printf("kimi error:%v\n", err)
 				return err
 			}
 
 			cnTitle, summary := parseSummary(plainSummary)
-
 			post.CNTitle = cnTitle
 			post.Summary = summary
 			return nil

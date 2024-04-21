@@ -35,7 +35,7 @@ var Email EmailConf
 func InitConfig() {
 	Service = ServiceConf{
 		Port:             getEnv("PORT", "8080"),
-		BlogSyncInterval: getEnv("SUBSCRIPTION_SYNC_INTERVAL", "@every 30m"),
+		BlogSyncInterval: getEnv("SUBSCRIPTION_SYNC_INTERVAL", "@every 1h"),
 	}
 
 	syncMaxSize, _ := strconv.Atoi(getEnv("SYNC_MAX_SIZE", ""))
@@ -50,7 +50,7 @@ func InitConfig() {
 
 	AI = AIConf{
 		KimiSecretKey: getEnv("MOONSHOT_API_KEY", ""),
-		KimiModel:     getEnv("KIMI_MODEL", "moonshot-v1-8k"),
+		KimiModel:     getEnv("KIMI_MODEL", "moonshot-v1-32k"),
 	}
 
 	Email = EmailConf{
