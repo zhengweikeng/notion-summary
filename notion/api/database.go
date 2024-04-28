@@ -71,18 +71,20 @@ type DateProperty struct {
 }
 
 type RichTextProperty struct {
-	Type        string    `json:"type,omitempty"`
-	Text        TextField `json:"text,omitempty"`
-	Annotations struct {
-		Bold          bool   `json:"bold,omitempty"`
-		Italic        bool   `json:"italic,omitempty"`
-		Strikethrough bool   `json:"strikethrough,omitempty"`
-		Underline     bool   `json:"underline,omitempty"`
-		Code          bool   `json:"code,omitempty"`
-		Color         string `json:"color,omitempty"`
-	} `json:"annotations,omitempty"`
-	PlainText string `json:"plain_text,omitempty"`
-	Href      string `json:"href,omitempty"`
+	Type        string      `json:"type,omitempty"`
+	Text        TextField   `json:"text,omitempty"`
+	Annotations Annotations `json:"annotations,omitempty"`
+	PlainText   string      `json:"plain_text,omitempty"`
+	Href        string      `json:"href,omitempty"`
+}
+
+type Annotations struct {
+	Bold          bool   `json:"bold,omitempty"`
+	Italic        bool   `json:"italic,omitempty"`
+	Strikethrough bool   `json:"strikethrough,omitempty"`
+	Underline     bool   `json:"underline,omitempty"`
+	Code          bool   `json:"code,omitempty"`
+	Color         string `json:"color,omitempty"`
 }
 
 type TextField struct {

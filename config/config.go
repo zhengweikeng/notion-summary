@@ -2,7 +2,6 @@ package config
 
 import (
 	"os"
-	"strconv"
 )
 
 type ServiceConf struct {
@@ -11,9 +10,9 @@ type ServiceConf struct {
 }
 
 type NotionConf struct {
-	NotionApiKey string
-	NotionDBID   string
-	SyncMaxSize  int
+	NotionApiKey   string
+	NotionRssDBID  string
+	NotionPostDBID string
 }
 
 type AIConf struct {
@@ -21,16 +20,9 @@ type AIConf struct {
 	KimiModel     string
 }
 
-type EmailConf struct {
-	APIKey string
-	FROM   string
-	To     string
-}
-
 var Service ServiceConf
 var Notion NotionConf
 var AI AIConf
-var Email EmailConf
 
 func InitConfig() {
 	Service = ServiceConf{
@@ -38,25 +30,15 @@ func InitConfig() {
 		BlogSyncInterval: getEnv("SUBSCRIPTION_SYNC_INTERVAL", "@every 1h"),
 	}
 
-	syncMaxSize, _ := strconv.Atoi(getEnv("SYNC_MAX_SIZE", ""))
-	if syncMaxSize == 0 {
-		syncMaxSize = 3
-	}
 	Notion = NotionConf{
-		NotionApiKey: getEnv("NOTION_API_KEY", ""),
-		NotionDBID:   getEnv("NOTION_DATABASE_ID", ""),
-		SyncMaxSize:  syncMaxSize,
+		NotionApiKey:   getEnv("NOTION_API_KEY", ""),
+		NotionRssDBID:  getEnv("NOTION_RSS_DATABASE_ID", ""),
+		NotionPostDBID: getEnv("NOTION_POST_DATABASE_ID", ""),
 	}
 
 	AI = AIConf{
 		KimiSecretKey: getEnv("MOONSHOT_API_KEY", ""),
 		KimiModel:     getEnv("KIMI_MODEL", "moonshot-v1-32k"),
-	}
-
-	Email = EmailConf{
-		APIKey: getEnv("RESEND_API_KEY", ""),
-		FROM:   getEnv("RESEND_FROM", "onboarding@resend.dev"),
-		To:     getEnv("RESEND_To", ""),
 	}
 }
 

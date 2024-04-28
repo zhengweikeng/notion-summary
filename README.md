@@ -18,8 +18,8 @@
 ## 配置与启动
 前置准备：
 1. **拷贝Notion模板**：
-    - 将这个Notion[模板](https://lydian-jelly-d27.notion.site/fda4e6cc21404aac89a509ed2a3e7e19?v=7bb79e84017146879a9e58acb2620525)复制到你的notion中
-    - 获取模板的id，进入你的notion，到刚才复制的模板中，点击右上角的“...”，点击“Copy link”，到浏览器打开，便可以得到这个模板的id
+    - 将这个Notion[模板](https://lydian-jelly-d27.notion.site/RSS-Summary-d5d03d21d7204fdca41cb34e1b9d24ab?pvs=4)复制到你的notion中
+    - 获取模板中两个database的id（在每个database的New旁边有三个点，点击后便可以看到"Copy link to view"，即可看到database的id）
 2. **创建与安装notion Integration**：
    - 到Notion的Integration管理页面，创建一个[Integration](https://www.notion.so/my-integrations)，创建后notion会为你分配一个Secret Key。
    - 进入你的notion，到刚才复制的模板中，点击右上角的“...”，在**Connect to**那里添加刚才你创建的Integration。
@@ -31,7 +31,8 @@
 2. 配置以下环境变量:
    ```
    export NOTION_API_KEY=${填入你的notion Ingetration secret key}
-   export NOTION_DATABASE_ID=${填入模板的id}
+   export NOTION_RSS_DATABASE_ID=${填入模板中第一个database的id}
+   export NOTION_POST_DATABASE_ID=${填入模板中第二个database的id}
    export MOONSHOT_API_KEY=${填入你的kimi api key}
    ```
 

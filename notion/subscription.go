@@ -12,25 +12,30 @@ import (
 
 	"github.com/avast/retry-go"
 	"github.com/mmcdole/gofeed"
+	"github.com/russross/blackfriday/v2"
 )
 
 type Subscription struct {
-	ID       string
-	PostDbID string
-	Name     string
-	URL      string
-	Posts    []*Post
+	ID    string
+	Name  string
+	URL   string
+	Posts []*Post
 }
 
 type Post struct {
 	ID          string
 	Title       string
-	CNTitle     string
 	Authors     string
 	Link        string
 	PublishTime time.Time
 	Content     string
-	Summary     string
+	Summary     []notionAPI.Block
+}
+
+type Summary struct {
+	Title   string
+	Outline string
+	Content string
 }
 
 func QuerySubscriptions() ([]*Subscription, error) {
@@ -75,12 +80,9 @@ func UpdateSubscriptionsInfos(subscriptions []*Subscription) error {
 }
 
 func querySubscriptionsInNotion() ([]*Subscription, error) {
-	dbItems, err := notionAPI.FetchDatabaseItems(config.Notion.NotionDBID,
+	log.Printf("query db:%s", config.Notion.NotionRssDBID)
+	dbItems, err := notionAPI.FetchDatabaseItems(config.Notion.NotionRssDBID,
 		[]notionAPI.DatabaseFilter{
-			{
-				Property: "Category",
-				Select:   map[string]string{"equals": "RSS"},
-			},
 			{
 				Property: "Enabled",
 				Checkbox: map[string]bool{"equals": true},
@@ -105,22 +107,6 @@ func querySubscriptionsInNotion() ([]*Subscription, error) {
 			URL:  prop["URL"].URL,
 		}
 
-		blocks, err := notionAPI.FetchBlockChilds(item.ID)
-		if err != nil {
-			log.Printf("FetchBlockChilds error, ID:%s, Name:%s, err:%v\n", s.ID, s.Name, err)
-			continue
-		}
-		if len(blocks) == 0 {
-			continue
-		}
-
-		database := blocks[0]
-		if database.Type != "child_database" {
-			continue
-		}
-
-		s.PostDbID = database.ID
-
 		log.Printf("%d. %s: %s\n", i+1, s.Name, s.URL)
 		subscriptions = append(subscriptions, &s)
 	}
@@ -144,7 +130,7 @@ func fetchPosts(subscriptions []*Subscription) error {
 					URL:      map[string]string{"equals": post.Link},
 				}
 			}
-			existPosts, err := notionAPI.FetchDatabaseItems(s.PostDbID, filters, notionAPI.OR)
+			existPosts, err := notionAPI.FetchDatabaseItems(config.Notion.NotionPostDBID, filters, notionAPI.OR)
 			if err != nil {
 				log.Printf("query exist posts error:%v", err)
 				s.Posts = nil
@@ -191,7 +177,7 @@ func (s *Subscription) fetchRSSPosts() {
 
 			var posts []*Post
 			for _, item := range feed.Items {
-				if config.Notion.SyncMaxSize > 0 && len(posts) >= config.Notion.SyncMaxSize {
+				if len(posts) >= 1 {
 					break
 				}
 
@@ -261,8 +247,6 @@ func makeSummarize(subscriptions []*Subscription) {
 			continue
 		}
 	}
-
-	return
 }
 
 func (s *Subscription) savePostSummaryToNotion() error {
@@ -271,13 +255,13 @@ func (s *Subscription) savePostSummaryToNotion() error {
 		return nil
 	}
 
+	postDBID := config.Notion.NotionPostDBID
 	for _, post := range s.Posts {
-		databaseID := s.PostDbID
-		log.Printf("[%s] save summary to notion, title:%s\n", databaseID, post.Title)
-		err := post.saveSummaryToNotion(databaseID)
+		log.Printf("[%s] save summary to notion, title:%s\n", postDBID, post.Title)
+		err := post.saveSummaryToNotion(postDBID)
 		if err != nil {
 			log.Printf("saveSummaryToNotion error, Name:%s, err:%v\n", post.Title, err)
-			break
+			continue
 		}
 	}
 	return nil
@@ -287,9 +271,6 @@ func (post *Post) summarize() error {
 	return retry.Do(
 		func() error {
 			prompt := post.Link
-			if post.Content != "" {
-				prompt = post.Content
-			}
 
 			plainSummary, err := kimi.SendChatRequest(prompt)
 			if err != nil {
@@ -297,8 +278,7 @@ func (post *Post) summarize() error {
 				return err
 			}
 
-			cnTitle, summary := parseSummary(plainSummary)
-			post.CNTitle = cnTitle
+			summary := parseSummary(plainSummary)
 			post.Summary = summary
 			return nil
 		},
@@ -309,6 +289,35 @@ func (post *Post) summarize() error {
 }
 
 func (post *Post) saveSummaryToNotion(databaseID string) error {
+	summary := post.Summary
+	if summary == nil {
+		return nil
+	}
+
+	cnTitle := ""
+	outline := ""
+
+	var prevBlock notionAPI.Block
+	for _, block := range post.Summary {
+		if block.Heading2 != nil {
+			cnTitle = block.Heading2.RichText[0].Text.Content
+		} else if block.Paragraph != nil {
+			content := block.Paragraph.RichText[0].Text.Content
+			if prevBlock.Object == "" {
+				if content == "概要" {
+					prevBlock = block
+				}
+			} else {
+				if content == "总结" {
+					break
+				}
+				if prevBlock.Paragraph.RichText[0].Text.Content == "概要" {
+					outline += content
+				}
+			}
+		}
+	}
+
 	pageProps := map[string]notionAPI.Property{
 		"Name": {
 			Title: []notionAPI.TitleProperty{
@@ -322,7 +331,7 @@ func (post *Post) saveSummaryToNotion(databaseID string) error {
 		},
 		"CN Title": {
 			RichText: []notionAPI.RichTextProperty{
-				{Text: notionAPI.TextField{Content: post.CNTitle}},
+				{Text: notionAPI.TextField{Content: cnTitle}},
 			},
 		},
 		"Published": {
@@ -331,6 +340,11 @@ func (post *Post) saveSummaryToNotion(databaseID string) error {
 			},
 		},
 		"Link": {URL: post.Link},
+		"Outline": {
+			RichText: []notionAPI.RichTextProperty{
+				{Text: notionAPI.TextField{Content: outline}},
+			},
+		},
 	}
 
 	children := []notionAPI.Block{
@@ -340,68 +354,71 @@ func (post *Post) saveSummaryToNotion(databaseID string) error {
 			Bookmark: &notionAPI.BlockBookmark{URL: post.Link},
 		},
 	}
-	if post.CNTitle != "" {
-		children = append(children, notionAPI.Block{
-			Object: "block",
-			Type:   "heading_2",
-			Heading2: &notionAPI.BlockHeading2{
-				RichText: []notionAPI.RichTextProperty{
-					{Text: notionAPI.TextField{Content: post.CNTitle}},
-				},
-			},
-		})
-	}
-	children = append(children,
-		notionAPI.Block{
-			Object: "block",
-			Type:   "paragraph",
-			Paragraph: &notionAPI.BlockParagraph{
-				RichText: []notionAPI.RichTextProperty{
-					{Text: notionAPI.TextField{Content: fmt.Sprintf("作者：%s", post.Authors)}},
-				},
-			},
-		},
-		notionAPI.Block{
-			Object: "block",
-			Type:   "paragraph",
-			Paragraph: &notionAPI.BlockParagraph{
-				RichText: []notionAPI.RichTextProperty{
-					{Text: notionAPI.TextField{Content: post.Summary}},
-				},
-			},
-		})
+	children = append(children, summary...)
 
 	_, err := notionAPI.CreatePageInDatabase(databaseID, pageProps, children)
 	return err
 }
 
-func parseSummary(plainSummary string) (title string, summary string) {
-	// 提取标题
-	titlePrefix := "标题："
-	titleStart := strings.Index(plainSummary, titlePrefix)
-	if titleStart == -1 {
-		summary = plainSummary
-		return
-	}
-	titleStart += len(titlePrefix)
-	titleEnd := strings.Index(plainSummary[titleStart:], "\n")
-	title = plainSummary[titleStart : titleStart+titleEnd]
+func parseSummary(plainSummary string) []notionAPI.Block {
+	var blocks []notionAPI.Block
 
-	// 提取内容总结
-	summaryPrefix := "内容总结：\n"
-	summaryStart := strings.Index(plainSummary, summaryPrefix)
-	if summaryStart == -1 {
-		summary = plainSummary
-		return
-	}
-	summaryStart += len(summaryPrefix)
-	summaryEnd := strings.Index(plainSummary[summaryStart:], "\n\n") // 假设内容总结后有两个换行表示段落结束
-	if summaryEnd == -1 {
-		summaryEnd = len(plainSummary) - summaryStart
-	}
-	summary = plainSummary[summaryStart : summaryStart+summaryEnd]
+	node := blackfriday.New().Parse([]byte(plainSummary))
+	node.Walk(func(node *blackfriday.Node, entering bool) blackfriday.WalkStatus {
+		if entering {
+			text := ""
+			switch node.Type {
+			case blackfriday.Heading:
+				text = string(node.FirstChild.Literal)
+				level := node.HeadingData.Level
 
-	return
+				if level == 2 {
+					blocks = append(blocks, notionAPI.Block{
+						Object: "block",
+						Type:   "heading_2",
+						Heading2: &notionAPI.BlockHeading2{
+							RichText: []notionAPI.RichTextProperty{
+								{Text: notionAPI.TextField{Content: text}},
+							},
+						},
+					})
+				}
+
+				if level == 3 {
+					blocks = append(blocks, notionAPI.Block{
+						Object: "block",
+						Type:   "paragraph",
+						Paragraph: &notionAPI.BlockParagraph{
+							RichText: []notionAPI.RichTextProperty{
+								{
+									Text: notionAPI.TextField{Content: text},
+									Annotations: notionAPI.Annotations{
+										Bold:  true,
+										Color: "default",
+									},
+								},
+							},
+						},
+					})
+				}
+			case blackfriday.Paragraph:
+				text = string(node.FirstChild.Literal)
+				blocks = append(blocks, notionAPI.Block{
+					Object: "block",
+					Type:   "paragraph",
+					Paragraph: &notionAPI.BlockParagraph{
+						RichText: []notionAPI.RichTextProperty{
+							{Text: notionAPI.TextField{Content: text}},
+						},
+					},
+				})
+			}
+		}
+
+		return blackfriday.GoToNext
+	})
+
+	return blocks
 }
 
 func parseDate(dateStr string) (time.Time, error) {
