@@ -4,11 +4,7 @@
 ## 简介
 通过这个集成，用户可以轻松地在Notion页面上获取和总结他们关注的RSS订阅源中的文章，总结后的结果将会写入到对应Notion页面中，你可以通过总结判断是否去阅读原文。
 
-![alt text](images/subscriptions.png)
-
-![alt text](images/subscription_detail.png)
-
-![alt text](images/summary_post.png)
+![alt text](images/preview.png)
 
 ## 功能
 - **定时更新**：根据设定的时间间隔（默认是1小时）自动更新订阅源。
