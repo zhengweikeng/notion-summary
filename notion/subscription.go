@@ -372,18 +372,6 @@ func parseSummary(plainSummary string) []notionAPI.Block {
 				text = string(node.FirstChild.Literal)
 				level := node.HeadingData.Level
 
-				if level == 2 {
-					blocks = append(blocks, notionAPI.Block{
-						Object: "block",
-						Type:   "heading_2",
-						Heading2: &notionAPI.BlockHeading2{
-							RichText: []notionAPI.RichTextProperty{
-								{Text: notionAPI.TextField{Content: text}},
-							},
-						},
-					})
-				}
-
 				if level == 3 {
 					blocks = append(blocks, notionAPI.Block{
 						Object: "block",
@@ -417,6 +405,21 @@ func parseSummary(plainSummary string) []notionAPI.Block {
 
 		return blackfriday.GoToNext
 	})
+
+	if len(blocks) == 0 {
+		return nil
+	}
+
+	titleBlock := blocks[0]
+	blocks[0] = notionAPI.Block{
+		Object: "block",
+		Type:   "heading_2",
+		Heading2: &notionAPI.BlockHeading2{
+			RichText: []notionAPI.RichTextProperty{
+				{Text: notionAPI.TextField{Content: titleBlock.Paragraph.RichText[0].Text.Content}},
+			},
+		},
+	}
 
 	return blocks
 }
