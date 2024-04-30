@@ -88,7 +88,7 @@ type Annotations struct {
 }
 
 type TextField struct {
-	Content string `json:"content,omitempty"`
+	Content string `json:"content"`
 	Link    string `json:"link,omitempty"`
 }
 
